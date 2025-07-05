@@ -1,6 +1,7 @@
 "use client"
 
 import { ArrowUpRight, BadgeCheck, Coins } from "lucide-react"
+import formattedCurrency from "@/lib/currency_parser"
 
 interface ActivityItemProps {
   activity: {
@@ -45,7 +46,7 @@ export function ActivityItem({ activity }: ActivityItemProps) {
         <p className="text-xs text-muted-foreground">{activity.time}</p>
       </div>
       {activity.reward && <div className="text-sm font-medium text-green-500">+{activity.reward} tokens</div>}
-      {activity.amount && <div className="text-sm font-medium text-blue-500">+{activity.amount} tokens</div>}
+      {activity.amount && <div className="text-sm font-medium text-blue-500">+{formattedCurrency(activity.amount)} </div>}
     </div>
   )
 }

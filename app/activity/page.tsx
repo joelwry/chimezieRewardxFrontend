@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ArrowDown, ArrowUp, BadgeCheck, Calendar, ChevronDown, Clock, Download, Filter, Search } from "lucide-react"
+import { ArrowDown, ArrowUp, BadgeCheck, Calendar, ChevronDown, Clock, Filter, Search } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,22 +67,23 @@ export default function ActivityPage() {
     acc[date].push(activity)
     return acc
   }, {})
-  const activityDays = Object.entries(groupedActivities).map(([date, acts]) => ({ date, activities: acts }))
+  const activityDays = Object.entries(groupedActivities).map(([date, acts]) => ({ date, activities: acts as any[] }))
 
   // Filter activities based on search and filters
   const filteredActivity = activityDays
     .map((day) => {
       const filteredActivities = day.activities.filter((activity: any) => {
         // Filter by search query
-        const matchesSearch =
-          (activity.task?.title?.toLowerCase().includes(searchQuery.toLowerCase()) || "") ||
-          (activity.task?.description?.toLowerCase().includes(searchQuery.toLowerCase()) || "")
+        const matchesSearch = searchQuery === "" || 
+          (activity.task?.title?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
+          (activity.task?.description?.toLowerCase().includes(searchQuery.toLowerCase()) || false)
         // Filter by type
         const matchesType =
           filterType === "all" ||
           (filterType === "tasks" && activity.task?.type === "survey") ||
           (filterType === "deposits" && activity.task?.type === "deposit") ||
-          (filterType === "staking" && activity.task?.type === "invest")
+          (filterType === "staking" && (activity.task?.type === "invest" || activity.task?.type === "lock"))
+        
         return matchesSearch && matchesType
       })
       return {
@@ -107,6 +108,7 @@ export default function ActivityPage() {
           </div>
         )
       case "invest":
+      case "lock":
         return (
           <div className="flex items-center justify-center w-10 h-10 rounded-full bg-yellow-500/10">
             <Clock className="w-5 h-5 text-yellow-500" />
@@ -128,9 +130,6 @@ export default function ActivityPage() {
           <h1 className="text-3xl font-bold tracking-tight">Activity</h1>
           <p className="text-muted-foreground">Track your rewards and task history</p>
         </div>
-        <Button variant="outline">
-          <Download className="w-4 h-4 mr-2" /> Export Activity
-        </Button>
       </div>
 
       <Card className="bg-background/60 backdrop-blur-sm border border-border/50">

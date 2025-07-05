@@ -17,21 +17,30 @@ import {
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter();
+
   const [user] = useState({
     name: "Alex Johnson",
     username: "alexj",
     avatar: "/placeholder.svg?height=40&width=40",
   })
 
+  const handleLogout = () => {
+    document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    console.log("Access token cleared from cookies.");
+    router.push("/login"); 
+  };
+
   const menuItems = [
     { title: "Dashboard", icon: Home, path: "/dashboard" },
     { title: "Tasks", icon: Sparkles, path: "/tasks" },
     { title: "Wallet", icon: Wallet, path: "/wallet" },
+    { title: "Transactions", icon: Coins, path: "/transactions" },
     { title: "Activity", icon: Activity, path: "/activity" },
-    { title: "Analytics", icon: BarChart3, path: "/analytics" },
     { title: "Settings", icon: Settings, path: "/settings" },
   ]
 
@@ -72,7 +81,7 @@ export function AppSidebar() {
       <SidebarFooter className="bg-transparent mt-8">
         <SidebarSeparator className="my-4" />
         <SidebarMenu className="flex flex-col gap-3 w-full">
-          <SidebarMenuItem>
+          {/* <SidebarMenuItem>
             <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-muted/40 w-full">
               <Avatar className="h-10 w-10">
                 <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
@@ -83,10 +92,10 @@ export function AppSidebar() {
                 <span className="text-xs text-muted-foreground">@{user.username}</span>
               </div>
             </div>
-          </SidebarMenuItem>
+          </SidebarMenuItem> */}
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Logout" className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-destructive/10 transition-all">
-              <Button variant="ghost" className="w-full justify-start">
+              <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
                 <LogOut className="h-5 w-5" />
                 <span>Logout</span>
               </Button>

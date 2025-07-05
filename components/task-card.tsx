@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/hooks/use-toast"
 import React from "react"
+import formattedCurrency from "@/lib/currency_parser"
 
 interface TaskProps {
   task: {

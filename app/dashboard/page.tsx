@@ -4,13 +4,12 @@ import { useEffect, useState } from "react"
 import {
   BadgeCheck,
   ChevronRight,
-  DollarSign,
   Plus,
   Sparkles,
   MessageSquare,
   Video,
   ArrowUpRight,
-  Coins,
+  Coins, CurrencyIcon
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +18,7 @@ import { BalanceChart } from "@/components/balance-chart"
 import { TaskCard } from "@/components/task-card"
 import { ActivityItem } from "@/components/activity-item"
 import { useRouter } from "next/navigation"
+import formattedCurrency from "@/lib/currency_parser"
 
 const typeIconMap: Record<string, any> = {
   survey: MessageSquare,
@@ -120,7 +120,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, let's earn some rewards!</p>
         </div>
-        <Button className="w-full sm:w-auto">
+        <Button className="w-full sm:w-auto"  onClick={() => router.push('/wallet/fund')}>
           <Plus className="w-4 h-4 mr-2" /> Fund Wallet
         </Button>
       </div>
@@ -129,11 +129,11 @@ export default function DashboardPage() {
         <Card className="bg-background/60 backdrop-blur-sm border border-border/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
-            <DollarSign className="w-4 h-4 text-muted-foreground" />
+            <CurrencyIcon className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-xl sm:text-2xl font-bold">
-              ₦{dashboard.user_balance}
+              {formattedCurrency(dashboard.user_balance)}
             </div>
           </CardContent>
         </Card>
@@ -173,7 +173,7 @@ export default function DashboardPage() {
         <Card className="lg:col-span-3 bg-background/60 backdrop-blur-sm border border-border/50">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg sm:text-xl">Recent Activity</CardTitle>
-            <Button variant="ghost" size="sm" className="gap-1">
+            <Button variant="ghost" size="sm" className="gap-1" onClick={e=>router.push("/activity")}>
               View all <ChevronRight className="w-4 h-4" />
             </Button>
           </CardHeader>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
               <CardTitle className="text-lg sm:text-xl">Available Tasks</CardTitle>
               <CardDescription>Complete tasks to earn rewards</CardDescription>
             </div>
-            <Button variant="outline" size="sm" className="w-full sm:w-auto">
+            <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={e=>router.push("/tasks")}>
               View All Tasks
             </Button>
           </div>

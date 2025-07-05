@@ -16,10 +16,21 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { differenceInDays } from "date-fns"
 import { useRouter } from "next/navigation"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 const TRON_USDT_ADDRESS = process.env.NEXT_PUBLIC_TRON_USDT_ADDRESS || "";
 const COINGECKO_API_URL = process.env.NEXT_PUBLIC_COINGECKO_API_URL || "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=ngn";
@@ -50,6 +61,23 @@ export default function WalletPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [reward, setReward] = useState(0)
   const [isTransferring, setIsTransferring] = useState(false)
+  const [showTransferConfirm, setShowTransferConfirm] = useState(false)
+  const [growthPlans, setGrowthPlans] = useState<any[]>([])
+  const [activeGrowths, setActiveGrowths] = useState<any[]>([])
+  const [claimedGrowths, setClaimedGrowths] = useState<any[]>([])
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null)
+  const [growthAmount, setGrowthAmount] = useState("")
+  const [isInvesting, setIsInvesting] = useState(false)
+  const [isClaiming, setIsClaiming] = useState<string | null>(null)
+  const [growthTab, setGrowthTab] = useState<'active'|'claimed'>('active')
+  const [showClaimConfirm, setShowClaimConfirm] = useState(false)
+  const [growthToClaim, setGrowthToClaim] = useState<any | null>(null)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [withdrawAmount, setWithdrawAmount] = useState("")
+  const [bankName, setBankName] = useState("")
+  const [accountName, setAccountName] = useState("")
+  const [accountNumber, setAccountNumber] = useState("")
+  const [isWithdrawing, setIsWithdrawing] = useState(false)
 
   // Fetch USDT/NGN rate with caching
   const fetchUsdtRate = async () => {
@@ -129,15 +157,15 @@ export default function WalletPage() {
         return
       }
       try {
-        // Fetch user info for balance
-        const userRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/users/`, {
+        // Fetch user balance using dedicated endpoint
+        const balanceRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/user-balance/`, {
           credentials: "include",
           headers: { "Authorization": `Bearer ${token}` },
         })
-        if (userRes.status === 401) { router.push("/login"); return }
-        if (!userRes.ok) throw new Error("Failed to fetch user info")
-        const userData = await userRes.json()
-        if (Array.isArray(userData) && userData.length > 0) setBalance(Number(userData[0].balance))
+        if (balanceRes.status === 401) { router.push("/login"); return }
+        if (!balanceRes.ok) throw new Error("Failed to fetch user balance")
+        const balanceData = await balanceRes.json()
+        setBalance(Number(balanceData.balance))
 
         // Fetch payments
         const paymentsRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/payments/`, {
@@ -275,25 +303,220 @@ export default function WalletPage() {
     }
   }
 
-  const handleInvestment = () => {
-    if (!selectedInvestment || !investmentAmount) return
+  // Fetch daily growth plans
+  useEffect(() => {
+    async function fetchGrowthPlans() {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/daily-growth-rates/`, { credentials: "include" })
+        if (res.ok) {
+          const data = await res.json()
+          setGrowthPlans(data)
+        }
+      } catch {}
+    }
+    fetchGrowthPlans()
+  }, [])
 
-    setIsLoading(true)
-
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-      const amountNum = Number(investmentAmount)
-      setBalance((prev) => prev - amountNum)
-      setShowInvestmentDialog(false)
-      setSelectedInvestment(null)
-      setInvestmentAmount("")
-
-      toast({
-        title: "Investment successful",
-        description: `You've invested ₦${amountNum.toLocaleString()} in the ${selectedInvestment} plan.`,
+  // Fetch daily growths
+  const fetchGrowths = async () => {
+    try {
+      const getCookie = (name: string) => {
+        if (typeof document === "undefined") return null
+        const value = `; ${document.cookie}`
+        const parts = value.split(`; ${name}=`)
+        if (parts.length === 2) return parts.pop()?.split(";").shift() || null
+        return null
+      }
+      const token = getCookie("access_token")
+      if (!token) return
+      const activeRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/daily-growths/?status=active`, {
+        credentials: "include",
+        headers: { "Authorization": `Bearer ${token}` },
       })
-    }, 2000)
+      if (activeRes.ok) setActiveGrowths(await activeRes.json())
+      const claimedRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/daily-growths/?status=claimed`, {
+        credentials: "include",
+        headers: { "Authorization": `Bearer ${token}` },
+      })
+      if (claimedRes.ok) setClaimedGrowths(await claimedRes.json())
+    } catch {}
+  }
+  useEffect(() => { fetchGrowths() }, [])
+
+  // --- Invest in Daily Growth ---
+  const handleInvestGrowth = async () => {
+    if (!selectedPlan || !growthAmount) return
+    setIsInvesting(true)
+    const getCookie = (name: string) => {
+      if (typeof document === "undefined") return null
+      const value = `; ${document.cookie}`
+      const parts = value.split(`; ${name}=`)
+      if (parts.length === 2) return parts.pop()?.split(";").shift() || null
+      return null
+    }
+    const token = getCookie("access_token")
+    if (!token) { router.push("/login"); return }
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/daily-growths/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        credentials: "include",
+        body: JSON.stringify({ plan_id: selectedPlan.id, amount: growthAmount, rate: selectedPlan.rate})
+      })
+      const data = await res.json()
+      
+      if (!res.ok) {
+        console.log(data)
+        let errorMsg = "Could not invest.";
+        if (data.detail) errorMsg = data.detail;
+        else if (typeof data === "object") errorMsg = String(Object.values(data)[0]);
+        toast({ title: "Investment failed", description: errorMsg, variant: "destructive" });
+        setIsInvesting(false);
+        return;
+      }
+
+      setShowInvestmentDialog(false)
+      setSelectedPlan(null)
+      setGrowthAmount("")
+      toast({ title: "Investment successful", description: `You've invested ₦${Number(growthAmount).toLocaleString()} in the ${selectedPlan.name} plan.` })
+      fetchGrowths()
+      setBalance((prev) => prev - Number(growthAmount))
+    } catch {
+      toast({ title: "Network error", description: "Could not connect to server.", variant: "destructive" })
+    } finally {
+      setIsInvesting(false)
+    }
+  }
+
+  // --- Claim Daily Growth ---
+  const handleClaimGrowth = async (growth: any) => {
+    // Check if 1 month has passed since investment
+    const investmentDate = new Date(growth.activated_date)
+    const currentDate = new Date()
+    const daysSinceInvestment = Math.floor((currentDate.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (daysSinceInvestment < 30) {
+      toast({ 
+        title: "Cannot claim yet", 
+        description: `You can only claim after 30 days from investment. You have ${30 - daysSinceInvestment} days remaining.`, 
+        variant: "destructive" 
+      })
+      return
+    }
+    
+    // Show confirmation modal
+    setGrowthToClaim(growth)
+    setShowClaimConfirm(true)
+  }
+
+  const confirmClaimGrowth = async () => {
+    if (!growthToClaim) return
+    
+    setIsClaiming(growthToClaim.id)
+    const getCookie = (name: string) => {
+      if (typeof document === "undefined") return null
+      const value = `; ${document.cookie}`
+      const parts = value.split(`; ${name}=`)
+      if (parts.length === 2) return parts.pop()?.split(";").shift() || null
+      return null
+    }
+    const token = getCookie("access_token")
+    if (!token) { router.push("/login"); return }
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/daily-growths/${growthToClaim.id}/claim/`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        credentials: "include",
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "Claim failed", description: data.detail || "Could not claim growth.", variant: "destructive" })
+        setIsClaiming(null)
+        return
+      }
+      toast({ title: "Growth claimed!", description: `₦${data.amount.toLocaleString()} has been added to your wallet.` })
+      setBalance(data.new_balance)
+      fetchGrowths()
+      setShowClaimConfirm(false)
+      setGrowthToClaim(null)
+    } catch {
+      toast({ title: "Network error", description: "Could not connect to server.", variant: "destructive" })
+    } finally {
+      setIsClaiming(null)
+    }
+  }
+
+  // --- Withdraw Funds ---
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || !bankName || !accountName || !accountNumber) {
+      toast({ title: "Missing information", description: "Please fill in all fields.", variant: "destructive" })
+      return
+    }
+
+    const amount = Number(withdrawAmount)
+    if (amount <= 0) {
+      toast({ title: "Invalid amount", description: "Amount must be greater than 0.", variant: "destructive" })
+      return
+    }
+
+    if (amount > balance) {
+      toast({ title: "Insufficient balance", description: "Amount exceeds your wallet balance.", variant: "destructive" })
+      return
+    }
+
+    setIsWithdrawing(true)
+    const getCookie = (name: string) => {
+      if (typeof document === "undefined") return null
+      const value = `; ${document.cookie}`
+      const parts = value.split(`; ${name}=`)
+      if (parts.length === 2) return parts.pop()?.split(";").shift() || null
+      return null
+    }
+    const token = getCookie("access_token")
+    if (!token) { router.push("/login"); return }
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/withdrawals/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          amount: amount,
+          bank_name: bankName,
+          account_name: accountName,
+          account_number: accountNumber
+        })
+      })
+      const data = await res.json()
+      console.log('Withdrawal response:', data)
+      
+      if (!res.ok) {
+        console.log('Withdrawal failed:', data)
+        toast({ title: "Withdrawal failed", description: data.detail || "Could not process withdrawal.", variant: "destructive" })
+        setIsWithdrawing(false)
+        return
+      }
+
+      console.log('Withdrawal successful, new balance:', data.new_balance)
+      toast({ title: "Withdrawal submitted!", description: "Your withdrawal request has been submitted and is being processed." })
+      setBalance(data.new_balance || (balance - amount))
+      setShowWithdrawModal(false)
+      setWithdrawAmount("")
+      setBankName("")
+      setAccountName("")
+      setAccountNumber("")
+    } catch {
+      toast({ title: "Network error", description: "Could not connect to server.", variant: "destructive" })
+    } finally {
+      setIsWithdrawing(false)
+    }
   }
 
   const copyToClipboard = (text: string) => {
@@ -304,15 +527,11 @@ export default function WalletPage() {
     })
   }
 
-  const investmentOptions = [
-    { id: "basic", name: "Basic", minAmount: 5000, maxAmount: 20000, roi: "5% on top of ₦150,000" },
-    { id: "standard", name: "Standard", minAmount: 50000, maxAmount: 200000, roi: "10% on top of ₦150,000" },
-    { id: "premium", name: "Premium", minAmount: 200000, maxAmount: 500000, roi: "15% on top of ₦150,000" },
-  ]
-
   const handleTransferReward = async () => {
     if (reward <= 0) return
     setIsTransferring(true)
+    setShowTransferConfirm(false)
+    
     // Get token from cookies
     const getCookie = (name: string) => {
       if (typeof document === "undefined") return null
@@ -322,8 +541,14 @@ export default function WalletPage() {
       return null
     }
     const token = getCookie("access_token")
+    
+    if (!token) {
+      router.push("/login")
+      return
+    }
+    
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/rewards/transfer/`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/transfer-rewards/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -331,17 +556,35 @@ export default function WalletPage() {
         },
         credentials: "include",
       })
+      
+      if (res.status === 401) {
+        router.push("/login")
+        return
+      }
+      
       const data = await res.json()
       if (!res.ok) {
-        toast({ title: "Transfer failed", description: data.error || "Could not transfer reward.", variant: "destructive" })
+        toast({ 
+          title: "Transfer failed", 
+          description: data.error || "Could not transfer reward.", 
+          variant: "destructive" 
+        })
         setIsTransferring(false)
         return
       }
+      
       setReward(0)
       setBalance(data.new_balance)
-      toast({ title: "Reward transferred!", description: `₦${data.amount} has been added to your wallet.` })
+      toast({ 
+        title: "Reward transferred!", 
+        description: `₦${data.amount.toLocaleString()} has been added to your wallet.` 
+      })
     } catch (err) {
-      toast({ title: "Network error", description: "Could not connect to server.", variant: "destructive" })
+      toast({ 
+        title: "Network error", 
+        description: "Could not connect to server.", 
+        variant: "destructive" 
+      })
     } finally {
       setIsTransferring(false)
     }
@@ -362,70 +605,9 @@ export default function WalletPage() {
           <p className="text-muted-foreground">Manage your funds and transactions</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" /> Fund Wallet
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Fund Your Wallet</DialogTitle>
-                <DialogDescription>Deposit USDT (TRC20) to fund your wallet. Enter the amount in Naira you want to deposit.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="naira-amount">Amount (₦)</Label>
-                  <Input
-                    id="naira-amount"
-                    type="number"
-                    placeholder="5000"
-                    value={nairaAmount}
-                    onChange={e => setNairaAmount(e.target.value)}
-                  />
-                </div>
-                {usdtRate && nairaAmount && (
-                  <div className="space-y-2">
-                    <div className="text-sm">USDT/NGN Rate: <span className="font-bold">₦{usdtRate}</span></div>
-                    <div className="text-sm">You will send: <span className="font-bold">{usdtEquivalent} USDT</span></div>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="tron-address">Deposit Address (USDT - TRC20)</Label>
-                  <div className="flex">
-                    <Input
-                      id="tron-address"
-                      value={TRON_USDT_ADDRESS}
-                      readOnly
-                      className="rounded-r-none"
-                    />
-                    <Button
-                      variant="outline"
-                      className="rounded-l-none"
-                      onClick={() => copyToClipboard(TRON_USDT_ADDRESS)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Send <span className="font-bold">{usdtEquivalent || "..."} USDT</span> to this address and enter the transaction hash below.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tx-hash">Transaction Hash</Label>
-                  <Input id="tx-hash" placeholder="Paste transaction hash here..." value={txHash} onChange={e => setTxHash(e.target.value)} />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setTxHash(""); setNairaAmount(""); setUsdtEquivalent(""); setIsDialogOpen(false); }}>
-                  Cancel
-                </Button>
-                <Button onClick={handleFundWallet} disabled={isLoading || !txHash || !nairaAmount || !usdtEquivalent}>
-                  {isLoading ? "Processing..." : "Submit"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => router.push('/wallet/fund')}>
+            <Plus className="w-4 h-4 mr-2" /> Fund Wallet
+          </Button>
 
           <Dialog open={showInvestmentDialog} onOpenChange={setShowInvestmentDialog}>
             <DialogTrigger asChild>
@@ -436,48 +618,45 @@ export default function WalletPage() {
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>Investment Options</DialogTitle>
-                <DialogDescription>Choose an investment plan to grow your funds</DialogDescription>
+                <DialogDescription>Choose a daily growth plan to grow your funds</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-4">
-                  {investmentOptions.map((option) => (
+                  {growthPlans.map((plan) => (
                     <div
-                      key={option.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                        selectedInvestment === option.id ? "border-primary bg-primary/10" : ""
-                      }`}
-                      onClick={() => setSelectedInvestment(option.id)}
+                      key={plan.id}
+                      className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedPlan && selectedPlan.id === plan.id ? "border-primary bg-primary/10" : ""}`}
+                      onClick={() => setSelectedPlan(plan)}
                     >
                       <div className="flex items-center justify-between">
-                        <h3 className="font-medium">{option.name} Plan</h3>
-                        <Badge variant="outline">{option.roi}</Badge>
+                        <h3 className="font-medium">{plan.name} Plan</h3>
+                        <Badge variant="outline">{plan.rate}% / day</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Min: ₦{option.minAmount.toLocaleString()} - Max: ₦{option.maxAmount.toLocaleString()}
+                        Min: ₦{Number(plan.min_amount).toLocaleString()} - Max: ₦{Number(plan.max_amount).toLocaleString()}
                       </p>
                     </div>
                   ))}
                 </div>
-
-                {selectedInvestment && (
+                {selectedPlan && (
                   <div className="space-y-2">
-                    <Label htmlFor="investment-amount">Investment Amount (₦)</Label>
+                    <Label htmlFor="growth-amount">Investment Amount (₦)</Label>
                     <Input
-                      id="investment-amount"
+                      id="growth-amount"
                       type="number"
-                      placeholder="Enter amount"
-                      value={investmentAmount}
-                      onChange={(e) => setInvestmentAmount(e.target.value)}
+                      placeholder={`Enter amount (₦${Number(selectedPlan.min_amount).toLocaleString()} - ₦${Number(selectedPlan.max_amount).toLocaleString()})`}
+                      value={growthAmount}
+                      onChange={e => setGrowthAmount(e.target.value)}
                     />
                   </div>
                 )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowInvestmentDialog(false)}>
+                <Button variant="outline" onClick={() => { setShowInvestmentDialog(false); setSelectedPlan(null); setGrowthAmount(""); }}>
                   Cancel
                 </Button>
-                <Button onClick={handleInvestment} disabled={isLoading || !selectedInvestment || !investmentAmount}>
-                  {isLoading ? "Processing..." : "Invest"}
+                <Button onClick={handleInvestGrowth} disabled={isInvesting || !selectedPlan || !growthAmount}>
+                  {isInvesting ? "Processing..." : "Invest"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -491,7 +670,7 @@ export default function WalletPage() {
             <div>
               <div className="text-sm font-medium">Earned</div>
               <div className="text-2xl font-bold">₦{earned.toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground">From completed tasks</div>
+              <div className="text-xs text-muted-foreground">From instant tasks rewards</div>
             </div>
             <ArrowUp className="w-6 h-6 text-green-500" />
           </div>
@@ -527,7 +706,7 @@ export default function WalletPage() {
           <CardContent className="space-y-6">
             <div className="flex flex-col items-center justify-center p-6 space-y-2 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl">
               <Coins className="w-12 h-12 text-primary" />
-              <div className="text-4xl font-bold">₦{balance.toLocaleString()}</div>
+              <div className="text-4xl font-bold">₦{(balance || 0).toLocaleString()}</div>
               <div className="text-sm text-muted-foreground">Total Balance</div>
             </div>
           </CardContent>
@@ -539,10 +718,10 @@ export default function WalletPage() {
             <CardDescription>Manage your wallet</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button className="w-full justify-start" variant="outline">
+            <Button className="w-full justify-start" variant="outline" onClick={() => setShowWithdrawModal(true)}>
               <DollarSign className="w-4 h-4 mr-2" /> Withdraw Funds
             </Button>
-            <Button className="w-full justify-start" variant="outline">
+            <Button className="w-full justify-start" variant="outline" onClick={() => setShowInvestmentDialog(true)}>
               <Clock className="w-4 h-4 mr-2" /> Invest Funds
             </Button>
           </CardContent>
@@ -655,41 +834,65 @@ export default function WalletPage() {
                 <p className="text-sm text-muted-foreground mt-1 mb-4">
                   You haven't made any withdrawals from your wallet.
                 </p>
-                <Button>Withdraw Funds</Button>
+                <Button onClick={() => setShowWithdrawModal(true)}>Withdraw Funds</Button>
               </div>
             </TabsContent>
           </Tabs>
         </CardContent>
         <CardFooter>
-          <Button variant="outline" onClick={() => router.push('/wallet/history')}>View Full Transaction History</Button>
+          <Button variant="outline" onClick={() => router.push('/transactions')}>View Full Transaction History</Button>
         </CardFooter>
       </Card>
 
-      {/* Daily Growth Card */}
+      {/* Daily Growth Card (Backend-driven) */}
       <Card className="bg-background/60 backdrop-blur-sm border border-border/50">
         <CardHeader>
           <CardTitle>Daily Growth</CardTitle>
-          <CardDescription>Your deposit grows by 1% daily</CardDescription>
+          <CardDescription>Invest and grow your funds daily. Claim anytime.</CardDescription>
+          <div className="flex gap-2 mt-2">
+            <Button size="sm" variant={growthTab === 'active' ? 'default' : 'outline'} onClick={() => setGrowthTab('active')}>Active</Button>
+            <Button size="sm" variant={growthTab === 'claimed' ? 'default' : 'outline'} onClick={() => setGrowthTab('claimed')}>Claimed</Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <div className="text-sm text-muted-foreground">Deposit Amount</div>
-              <div className="text-xl font-bold">₦{depositAmount.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Days Since Deposit</div>
-              <div className="text-xl font-bold">{daysSinceDeposit} days</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Growth Rate</div>
-              <div className="text-xl font-bold">1% / day</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Grown Balance</div>
-              <div className="text-xl font-bold text-green-600">₦{grownBalance.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
-            </div>
-          </div>
+          {(growthTab === 'active' ? activeGrowths : claimedGrowths).length === 0 && (
+            <div className="text-center text-muted-foreground py-8">No {growthTab === 'active' ? 'active' : 'claimed'} daily growths yet.</div>
+          )}
+          {(growthTab === 'active' ? activeGrowths : claimedGrowths).map((growth: any) => {
+            const days = Math.max(0, Math.floor((new Date(growth.claimed_date || new Date()).getTime() - new Date(growth.activated_date).getTime()) / (1000 * 60 * 60 * 24)))
+            return (
+              <div key={growth.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b py-4 last:border-b-0">
+                <div>
+                  <div className="text-sm text-muted-foreground">Plan</div>
+                  <div className="font-bold">{growth.plan?.name}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Amount</div>
+                  <div className="font-bold">₦{Number(growth.amount).toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Rate</div>
+                  <div className="font-bold">{growth.rate}% / day</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Days</div>
+                  <div className="font-bold">{days}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Grown Balance</div>
+                  <div className="font-bold text-green-600">₦{Number(growth.grown_amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                </div>
+                {growthTab === 'active' && (
+                  <Button size="sm" onClick={() => handleClaimGrowth(growth)} disabled={isClaiming === growth.id}>
+                    {isClaiming === growth.id ? 'Claiming...' : 'Claim'}
+                  </Button>
+                )}
+                {growthTab === 'claimed' && (
+                  <div className="text-xs text-muted-foreground">Claimed on {growth.claimed_date ? new Date(growth.claimed_date).toLocaleDateString() : ''}</div>
+                )}
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 
@@ -701,11 +904,117 @@ export default function WalletPage() {
             <div className="text-2xl font-bold text-green-600 flex items-center gap-2"><Gift className="w-6 h-6" />₦{reward.toLocaleString()}</div>
             <div className="text-xs text-muted-foreground">Total reward earned from tasks</div>
           </div>
-          <Button onClick={handleTransferReward} disabled={reward <= 0 || isTransferring} variant="default">
-            {isTransferring ? "Transferring..." : "Transfer to Wallet"}
-          </Button>
+          <AlertDialog open={showTransferConfirm} onOpenChange={setShowTransferConfirm}>
+            <AlertDialogTrigger asChild>
+              <Button 
+                onClick={() => setShowTransferConfirm(true)} 
+                disabled={reward <= 0 || isTransferring} 
+                variant="default"
+              >
+                {isTransferring ? "Transferring..." : "Transfer to Wallet"}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirm Reward Transfer</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to transfer ₦{reward.toLocaleString()} from your claimable rewards to your main wallet balance? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleTransferReward}>
+                  Transfer Reward
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </Card>
+
+      {/* Claim Confirmation Modal */}
+      <AlertDialog open={showClaimConfirm} onOpenChange={setShowClaimConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Growth Claim</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to claim ₦{growthToClaim ? Number(growthToClaim.grown_amount).toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0} from your daily growth investment? This will add the amount to your wallet balance and mark the investment as claimed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setShowClaimConfirm(false); setGrowthToClaim(null); }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClaimGrowth}>
+              Claim Growth
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Withdrawal Modal */}
+      <Dialog open={showWithdrawModal} onOpenChange={setShowWithdrawModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Withdraw Funds</DialogTitle>
+            <DialogDescription>Enter your bank details and the amount you want to withdraw. Your withdrawal will be processed manually by our admin team.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="withdraw-amount">Amount (₦)</Label>
+              <Input
+                id="withdraw-amount"
+                type="number"
+                placeholder="Enter amount to withdraw"
+                value={withdrawAmount}
+                onChange={e => setWithdrawAmount(e.target.value)}
+                max={balance}
+              />
+              <p className="text-xs text-muted-foreground">Available balance: ₦{(balance || 0).toLocaleString()}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bank-name">Bank Name</Label>
+              <Input
+                id="bank-name"
+                placeholder="e.g., First Bank, GT Bank"
+                value={bankName}
+                onChange={e => setBankName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="account-name">Account Name</Label>
+              <Input
+                id="account-name"
+                placeholder="Account holder name"
+                value={accountName}
+                onChange={e => setAccountName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="account-number">Account Number</Label>
+              <Input
+                id="account-number"
+                placeholder="10-digit account number"
+                value={accountNumber}
+                onChange={e => setAccountNumber(e.target.value)}
+                maxLength={10}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { 
+              setShowWithdrawModal(false); 
+              setWithdrawAmount(""); 
+              setBankName(""); 
+              setAccountName(""); 
+              setAccountNumber(""); 
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount || !bankName || !accountName || !accountNumber}>
+              {isWithdrawing ? "Processing..." : "Submit Withdrawal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
