@@ -108,11 +108,18 @@ export default function SignupPage() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Signing up..." : "Register"}
             </Button>
-            <div className="text-center text-sm">
-              Already have an account?{" "}
-              <Link href="/login" className="text-primary hover:underline">
-                Login
-              </Link>
+            <div className="text-center text-sm space-y-2">
+              <div>
+                Already have an account?{" "}
+                <Link href="/login" className="text-primary hover:underline">
+                  Login
+                </Link>
+              </div>
+              <div>
+                <Link href="/landing" className="text-primary hover:underline text-xs">
+                  Learn more about RewardX
+                </Link>
+              </div>
             </div>
           </CardFooter>
         </form>

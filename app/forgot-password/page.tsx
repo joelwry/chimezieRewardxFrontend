@@ -69,11 +69,18 @@ export default function ForgotPasswordPage() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Sending..." : "Send Reset Link"}
               </Button>
-              <div className="text-center text-sm">
-                Remember your password?{" "}
-                <Link href="/login" className="text-primary hover:underline">
-                  Sign in
-                </Link>
+              <div className="text-center text-sm space-y-2">
+                <div>
+                  Remember your password?{" "}
+                  <Link href="/login" className="text-primary hover:underline">
+                    Sign in
+                  </Link>
+                </div>
+                <div>
+                  <Link href="/landing" className="text-primary hover:underline text-xs">
+                    Learn more about RewardX
+                  </Link>
+                </div>
               </div>
             </CardFooter>
           </form>
@@ -91,6 +98,11 @@ export default function ForgotPasswordPage() {
             <Button variant="outline" className="w-full mt-4" onClick={() => router.push("/login")}>
               Return to Login
             </Button>
+            <div className="text-center">
+              <Link href="/landing" className="text-primary hover:underline text-xs">
+                Learn more about RewardX
+              </Link>
+            </div>
           </CardContent>
         )}
       </Card>
